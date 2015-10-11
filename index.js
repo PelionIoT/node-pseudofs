@@ -16,8 +16,10 @@ var readPseudo = function(path, options, callback) {
 	if(callback) _cb = callback; else _cb = options;
 	var wrap = function(error,buf,readlen) {
 		var _buf = undefined;
-		if(!error)           // why?? because apparently the writers of node::Buffer thought
+		if(!error) {           // why?? because apparently the writers of node::Buffer thought
+//			console.dir(buf);
 			_buf = buf.slice(0,readlen);  // that making the 'length_' property a private was a good idea - so easier to adjust size here.
+		}
 		else {
 			if(error.errno) {   // match the standard node.js 'fs' error format.
 				error.code = pseudoFS.CONSTS[error.errno];

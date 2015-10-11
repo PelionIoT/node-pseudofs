@@ -9,9 +9,11 @@
         "error-common.cc"
       ],
 
-#      "include_dirs": [
-#
-#      ],
+     "include_dirs": [
+		"deps/build/include",
+		"node_modules/nan",
+		"<!(node -e \"require('nan')\")"    # note, this is needed b/c with 'npm install' it places 'nan' in a different location - this may break in Yocto bb recipe
+      ],
 
       "cflags": [
         "-Wall",

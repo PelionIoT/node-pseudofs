@@ -82,32 +82,11 @@ using namespace v8;
 //  return _if_fd;
 //}
 
-Persistent<Function> PseudoFs::constructor;
+Nan::Persistent<Function> PseudoFs::constructor;
 
 //Persistent<ObjectTemplate> PseudoFs::prototype;
 
-Handle<Value> PseudoFs::Init(const Arguments& args) {
-
-	HandleScope scope;
-//	uv_mutex_init(&(ClonedPackage::workIdMutex));
-	// Prepare constructor template
-
-//	tpl->SetCallHandler()
-	// Prototype
-//	tpl->PrototypeTemplate()->Set(String::NewSymbol("connect"), FunctionTemplate::New(Connect)->GetFunction());
-
-//	tpl->InstanceTemplate()->Set(String::NewSymbol("cloneRemote"), FunctionTemplate::New(CloneRemote)->GetFunction());
-//	tpl->InstanceTemplate()->Set(String::NewSymbol("checkoutRev"), FunctionTemplate::New(CheckoutRev)->GetFunction());
-
-	// .repo = null
-//	tpl->InstanceTemplate()->Set(String::NewSymbol("repo"), Local<Value>::New(Null()));
-//	NODE_SET_PROTOTYPE_METHOD
-
-//	ExtendFrom(args);
-
-	return scope.Close(Undefined());
-
-//  target->Set(NanNew<String>("Checkout"), object);
+NAN_METHOD(PseudoFs::Init) {
 }
 
 
@@ -158,36 +137,36 @@ Handle<Value> PseudoFs::Init(const Arguments& args) {
  * @param args
  * @return
  **/
-Handle<Value> PseudoFs::New(const Arguments& args) {
-	HandleScope scope;
 
+NAN_METHOD(PseudoFs::New) {
 	PseudoFs* obj = NULL;
 
-	if (args.IsConstructCall()) {
+	if (info.IsConstructCall()) {
 	    // Invoked as constructor: `new MyObject(...)`
 //	    double value = args[0]->IsUndefined() ? 0 : args[0]->NumberValue();
-		if(args.Length() > 0) {
-			if(!args[0]->IsString()) {
-				return ThrowException(Exception::TypeError(String::New("Improper first arg to ProcFs cstor. Must be a string.")));
+		if(info.Length() > 0) {
+			if(!info[0]->IsString()) {
+				Nan::ThrowTypeError("Improper first arg to ProcFs cstor. Must be a string.");
+				return;
 			}
-//			Local<Value> ifname = args[0]->ToObject()->Get(String::New(""));
 
-			v8::String::Utf8Value v8str(args[0]);
-			//obj->setIfName(v8str.operator *(),v8str.length());
+			Nan::Utf8String v8str(info[0]->ToString());
 			obj = new PseudoFs(v8str.operator *());
 
 		} else {
-			return ThrowException(Exception::TypeError(String::New("First arg must be a string path.")));
+			Nan::ThrowTypeError("First arg must be a string path.");
+			return;
 		}
 
-		obj->Wrap(args.This());
-	    return args.This();
+		obj->Wrap(info.This());
+	    info.GetReturnValue().Set(info.This());
 	} else {
 	    // Invoked as plain function `MyObject(...)`, turn into construct call.
 	    const int argc = 1;
-	    Local<Value> argv[argc] = { args[0] };
-	    return scope.Close(constructor->NewInstance(argc, argv));
-	  }
+	    Local<Value> argv[argc] = { info[0] };
+	    v8::Local<v8::Function> cons = Nan::New<v8::Function>(constructor);
+	    info.GetReturnValue().Set(cons->NewInstance(argc,argv));
+	}
 
 }
 //
@@ -244,8 +223,10 @@ Handle<Value> PseudoFs::New(const Arguments& args) {
 //		return scope.Close(Undefined());
 //}
 
-void PseudoFs::SetReadChunkSize(Local<String> property, Local<Value> val, const AccessorInfo &info) {
-	HandleScope scope;
+//void PseudoFs::SetReadChunkSize(Local<String> property, Local<Value> val, const AccessorInfo &info) {
+void PseudoFs::SetReadChunkSize(v8::Local<v8::String> property,
+	                            v8::Local<v8::Value> val,
+	                            const Nan::PropertyCallbackInfo<v8::Value>& info) {
 	PseudoFs* obj = ObjectWrap::Unwrap<PseudoFs>(info.This());
 	if(val->IsInt32()) {
 		obj->read_chunk_size = (int) val->Int32Value();
@@ -255,10 +236,10 @@ void PseudoFs::SetReadChunkSize(Local<String> property, Local<Value> val, const 
 
 }
 
-Handle<Value> PseudoFs::GetReadChunkSize(Local<String> property, const AccessorInfo &info) {
-	HandleScope scope;
+void PseudoFs::GetReadChunkSize(v8::Local<v8::String> property,
+                            const Nan::PropertyCallbackInfo<v8::Value>& info) {
 	PseudoFs* obj = ObjectWrap::Unwrap<PseudoFs>(info.This());
-	return scope.Close(Integer::New(obj->read_chunk_size));
+	info.GetReturnValue().Set(Nan::New((uint32_t) obj->read_chunk_size));
 }
 
 
@@ -348,8 +329,12 @@ void PseudoFs::uv_close_handle_cb(uv_handle_t* handle) {
 
 }
 
+#if (UV_VERSION_MAJOR > 0)
+void PseudoFs::timercb_pseudofs(uv_timer_t* h) {
+#else
 void PseudoFs::timercb_pseudofs(uv_timer_t *h, int status) {
-	workReq *req = (workReq *) h->data;
+#endif
+//	workReq *req = (workReq *) h->data;
 	DBG_OUT("timeout on eventloop for req.");
 	uv_timer_stop(h);
 	uv_unref((uv_handle_t*) h);
@@ -361,57 +346,75 @@ void PseudoFs::timercb_pseudofs(uv_timer_t *h, int status) {
  * fs.readFile(filename, [options], callback)
  * callback = function(error,Buffer,readlen) {}
  */
-Handle<Value> PseudoFs::ReadPseudofile(const Arguments& args) {
-	HandleScope scope;
+NAN_METHOD(PseudoFs::ReadPseudofile) {
 	int cb_index = 1;
-	if(args.Length() > 1 && args[0]->IsString()) {
-		if((args.Length() > 2) ) {
-			if(args[2]->IsFunction())
+	if(info.Length() > 1 && info[0]->IsString()) {
+		if((info.Length() > 2) ) {
+			if(info[2]->IsFunction())
 				cb_index = 2;
-			else
-				return ThrowException(Exception::TypeError(String::New("pseudofs -> Need at least two params: readPseudofile(filename, [options], callback)")));
+			else {
+				Nan::ThrowTypeError("pseudofs -> Need at least two params: readPseudofile(filename, [options], callback)");
+				return;
+			}
+
 		}
-		if(args.Length() == 2) {
-			if(args[1]->IsFunction())
+		if(info.Length() == 2) {
+			if(info[1]->IsFunction())
 				cb_index = 1;
-			else
-				return ThrowException(Exception::TypeError(String::New("pseudofs -> Need at least two params: readPseudofile(filename, [options], callback)")));
+			else {
+				Nan::ThrowTypeError("pseudofs -> Need at least two params: readPseudofile(filename, [options], callback)");
+				return;
+			}
+
 		}
 
 		// FIXME - process options {} arg[1]
 
-		v8::String::Utf8Value v8str(args[0]);
+		Nan::Utf8String v8str(info[0]->ToString());
 		PseudoFs *obj = new PseudoFs(v8str.operator *());
 		workReq *req = new PseudoFs::workReq(obj,workType::OPEN|workType::READ|workType::CLOSE|workType::SSHOT); // open,read,close - single shot
 
+#ifdef USE_UV_REF
 		if(req->ref) {
 			uv_timer_init(uv_default_loop(),&req->timeoutHandle);
-			req->timeoutHandle.data = req;
-			uv_timer_start(&req->timeoutHandle,timercb_pseudofs,req->timeout*req->retries,0);
-			uv_ref((uv_handle_t *)&req->timeoutHandle);
 		}
-
+#endif
 		// FIXME for node 0.12 this will change. Take note.
-		Handle<Object> buf = UNI_BUFFER_NEW(READ_DEFAULT_CHUNK_SIZE);
 		// make new Buffer object. Make it Persistent to keep it around after the HandleScope closes.
 		// we will do the read in a different thread. We don't want to call v8 in another thread, so just do the unwrapping here before we do the work..
 		// in the work we will just copy stuff to the _backing store.
-		req->buffer = Persistent<Object>::New(buf);
-		req->_backing = node::Buffer::Data(buf);
+		//		Handle<Object> buf = UNI_BUFFER_NEW(READ_DEFAULT_CHUNK_SIZE);
+		Nan::MaybeLocal<Object> buf = Nan::NewBuffer(READ_DEFAULT_CHUNK_SIZE);
+		Local<Object> buf_actual;
+		if(buf.ToLocal(&buf_actual)) {
+			req->_backing = node::Buffer::Data(buf_actual);
+			req->buffer.Reset(buf_actual);
+			req->completeCB = new Nan::Callback(Local<Function>::Cast(info[cb_index]));
+			// queue up read job...
+			DBG_OUT("Queuing work for readPseudofile()\n");
+			uv_queue_work(uv_default_loop(), &(req->work), PseudoFs::do_work, PseudoFs::post_work);
+
+		} else {
+			ERROR_OUT("Failure to create Buffer object.");
+#ifdef USE_UV_REF
+			if(req->ref) {
+//				uv_timer_stop(&req->timeoutHandle);
+				uv_unref((uv_handle_t *)&req->timeoutHandle);
+			}
+#endif
+			// TODO call callback as Failure
+		}
+//		req->buffer = Persistent<Object>::New(buf);
+//		req->_backing = node::Buffer::Data(buf);
 //		if(req->ref) {
 //			node::Buffer *b = node::Buffer::Unwrap(buf);
 //			b->Ref();
 //		}
-		req->completeCB = Persistent<Function>::New(Local<Function>::Cast(args[cb_index]));
-		// queue up read job...
-		DBG_OUT("Queuing work for readPseudofile()\n");
-		uv_queue_work(uv_default_loop(), &(req->work), PseudoFs::do_work, PseudoFs::post_work);
+//		req->completeCB = Persistent<Function>::New(Local<Function>::Cast(info[cb_index]));
 
 //		uv_ref();
-
-		return scope.Close(Undefined());
 	} else {
-		return ThrowException(Exception::TypeError(String::New("pseudofs -> Need at least two params: readPseudofile(filename, [options], callback)")));
+		Nan::ThrowTypeError("pseudofs -> Need at least two params: readPseudofile(filename, [options], callback)");
 	}
 }
 
@@ -419,6 +422,14 @@ void PseudoFs::do_work(uv_work_t *req) {
 	workReq *job = (workReq *) req->data;
 	DBG_OUT("do_work()\n");
 	job->_errno = 0;
+
+//	if(job->ref) {
+////		uv_timer_init(uv_default_loop(),&job->timeoutHandle);
+////		job->timeoutHandle.data = job;
+////		uv_timer_start(&job->timeoutHandle,timercb_pseudofs,job->timeout*job->retries,0);
+//		uv_ref((uv_handle_t *)&job->timeoutHandle);
+//	}
+
 	if(job->t & workType::OPEN) {
 		if(job->self->_path) {
 			DBG_OUT("doing OPEN: %s\n", job->self->_path);
@@ -515,6 +526,12 @@ void PseudoFs::do_work(uv_work_t *req) {
 		}
 	}
 
+//	if(job->ref) {
+////		uv_timer_stop(&job->timeoutHandle);
+//		uv_unref((uv_handle_t *)&job->timeoutHandle);
+//	}
+
+
 //	if(job->_path) {
 //		// open file, read all of it, close it. place in Buffer
 //
@@ -535,44 +552,47 @@ void PseudoFs::post_work(uv_work_t *req, int status) {
 	Local<Value> argv[argc];
 	PseudoFs *hiddenobj = NULL;
 
+#ifdef USE_UV_REF
+	if(job->ref) {
+		uv_unref((uv_handle_t *)&job->timeoutHandle);
+	}
+#endif
+
 	if(job->t & workType::SSHOT) {
 		if(job->t & workType::READ) {
 			if(job->_errno == 0) {
 		//		Buffer* rawbuffer = ObjectWrap<Buffer>(job->buffer);
-				if(!job->completeCB->IsUndefined()) {
-					argv[0] = Local<Primitive>::New(Null());
-					argv[1] = job->buffer->ToObject();
-					argv[2] = Integer::New(job->len);
-					job->completeCB->Call(Context::GetCurrent()->Global(),3,argv);
+				if(job->completeCB) {
 					DBG_OUT("SuccessCB (read)\n");
+					argv[0] = Nan::Null();
+					argv[1] = Nan::New(job->buffer);
+					argv[2] = Nan::New(job->len);
+					job->completeCB->Call(Nan::GetCurrentContext()->Global(),3,argv);
 				}
 			} else { // failure
-				if(!job->completeCB->IsUndefined()) {
+				if(job->completeCB) {
 					argv[0] = _errcmn::errno_to_JS(job->_errno,"Error in readPseudofile(): ");
-					job->completeCB->Call(Context::GetCurrent()->Global(),1,argv);
+					job->completeCB->Call(Nan::GetCurrentContext()->Global(),1,argv);
 				}
 			}
 		}
 		if(job->t & workType::WRITE) {
 			if(job->_errno == 0) {
 		//		Buffer* rawbuffer = ObjectWrap<Buffer>(job->buffer);
-				if(!job->completeCB->IsUndefined()) {
-					argv[0] = Local<Primitive>::New(Null());  // changed to null to match node.js behavior
-					job->completeCB->Call(Context::GetCurrent()->Global(),1,argv);
+				if(job->completeCB) {
+					argv[0] = Nan::Null();  // changed to null to match node.js behavior
 					DBG_OUT("SuccessCB (write)\n");
+					job->completeCB->Call(Nan::GetCurrentContext()->Global(),1,argv);
 				}
 			} else { // failure
-				if(!job->completeCB->IsUndefined()) {
+				if(job->completeCB) {
+					DBG_OUT("SuccessCB (write, failure)\n");
 					argv[0] = _errcmn::errno_to_JS(job->_errno,"Error in writePseudofile(): ");
-					job->completeCB->Call(Context::GetCurrent()->Global(),1,argv);
+					job->completeCB->Call(Nan::GetCurrentContext()->Global(),1,argv);
 				}
 			}
 		}
 
-		if(job->ref) {
-			uv_unref((uv_handle_t *)&job->timeoutHandle);
-			uv_timer_stop(&job->timeoutHandle);
-		}
 
 		if(job->self) {
 			hiddenobj = job->self;
@@ -601,7 +621,7 @@ void PseudoFs::post_work(uv_work_t *req, int status) {
 //		}
 //	}
 //
-
+	if(!job->buffer.IsEmpty()) job->buffer.Reset();
 	delete job; // should delete Persistent Handles and allow the Buffer object to be GC'ed
 	if(hiddenobj) delete hiddenobj;
 }
@@ -657,46 +677,46 @@ void PseudoFs::post_work(uv_work_t *req, int status) {
  * callback = function(error) {}
  * pseudoFS.writeFile(filename, data, [options], callback)
  */
-Handle<Value> PseudoFs::WritePseudofile(const Arguments& args) {
-	HandleScope scope;
+NAN_METHOD(PseudoFs::WritePseudofile) {
 	int opts_in = 0;
-	if(args.Length() < 3) {
-		return ThrowException(Exception::TypeError(String::New("pseudofs -> Need at least two params: writePseudo(filename, data, [options], callback)")));
+	if(info.Length() < 3) {
+		return Nan::ThrowTypeError("pseudofs -> Need at least two params: writePseudo(filename, data, [options], callback)");
 	}
 
-	if(args.Length() == 3) {
+	if(info.Length() == 3) {
 		opts_in = 0;
 	}
-	if(!args[2+opts_in]->IsFunction())
-		return ThrowException(Exception::TypeError(String::New("pseudofs -> Need at least two params: writePseudo(filename, data, [options], callback)")));
+	if(!info[2+opts_in]->IsFunction())
+		return Nan::ThrowTypeError("pseudofs -> Need at least two params: writePseudo(filename, data, [options], callback)");
 
-	v8::String::Utf8Value v8str(args[0]);
+	Nan::Utf8String v8str(info[0]);
 	PseudoFs *obj = new PseudoFs(v8str.operator *());
 	workReq *req = new PseudoFs::workReq(obj,workType::OPEN|workType::WRITE|workType::CLOSE|workType::SSHOT); // open,read,close - single shot
 
 
-	if(((args[1]->IsObject() && Buffer::HasInstance(args[1])) || args[1]->IsString()) && args[0]->IsString()) {
-		if(args[1]->IsString()) {
-			v8::String::Utf8Value v8dat(args[1]);
+	if(((info[1]->IsObject() && Buffer::HasInstance(info[1])) || info[1]->IsString()) && info[0]->IsString()) {
+		if(info[1]->IsString()) {
+			Nan::Utf8String v8dat(info[1]);
 			req->_backing = strdup(v8dat.operator *()); // copy the string to the request
 			req->freeBacking = true; // mark to free() on delete
 			req->len = strlen(req->_backing);
 		} else {
-			req->buffer = Persistent<Object>::New(args[1]->ToObject()); // keep the Buffer persistent until the write is done... (will be removed when req is deleted)
-			req->_backing = node::Buffer::Data(args[1]->ToObject());
-			req->len = node::Buffer::Length(args[1]->ToObject());
+			req->buffer.Reset(info[1]->ToObject()); // keep the Buffer persistent until the write is done... (will be removed when req is deleted)
+			req->_backing = node::Buffer::Data(info[1]->ToObject());
+			req->len = node::Buffer::Length(info[1]->ToObject());
 		}
 
 		// TODO process options
 
-		req->completeCB = Persistent<Function>::New(Local<Function>::Cast(args[opts_in+2]));
+//		req->completeCB = Persistent<Function>::New(Local<Function>::Cast(args[opts_in+2]));
+		req->completeCB = new Nan::Callback(Local<Function>::Cast(info[opts_in+2]));
 		// queue up write job...
 		DBG_OUT("Queuing work for writePseudofile()\n");
 		uv_queue_work(uv_default_loop(), &(req->work), PseudoFs::do_work, PseudoFs::post_work);
 
-		return scope.Close(Undefined());
+		return;
 	} else {
-		return ThrowException(Exception::TypeError(String::New("pseudofs -> Need at least two params: writePseudo(filename, data {string|Buffer}, [options], callback)")));
+		return Nan::ThrowTypeError("pseudofs -> Need at least two params: writePseudo(filename, data {string|Buffer}, [options], callback)");
 	}
 }
 //
@@ -810,14 +830,14 @@ void InitAll(Handle<Object> exports, Handle<Object> module) {
 
 
 //	TunInterface::Init();
-	exports->Set(String::NewSymbol("InitPseudoFS"), FunctionTemplate::New(PseudoFs::Init)->GetFunction());
-	exports->Set(String::NewSymbol("psuedoFS"), FunctionTemplate::New(PseudoFs::New)->GetFunction());
-	exports->Set(String::NewSymbol("readPseudo"), FunctionTemplate::New(PseudoFs::ReadPseudofile)->GetFunction());
-	exports->Set(String::NewSymbol("writePseudo"), FunctionTemplate::New(PseudoFs::WritePseudofile)->GetFunction());
+	Nan::Set(exports,Nan::New<String>("InitPseudoFS").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(PseudoFs::Init)->GetFunction());
+	Nan::Set(exports,Nan::New<String>("psuedoFS").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(PseudoFs::New)->GetFunction());
+	Nan::Set(exports,Nan::New<String>("readPseudo").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(PseudoFs::ReadPseudofile)->GetFunction());
+	Nan::Set(exports,Nan::New<String>("writePseudo").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(PseudoFs::WritePseudofile)->GetFunction());
 
-	Handle<Object> consts = Object::New();
+	Handle<Object> consts = Nan::New<Object>();
 	_errcmn::DefineConstants(consts);
-	exports->Set(String::NewSymbol("CONSTS"), consts);
+	Nan::Set(exports,Nan::New<String>("CONSTS").ToLocalChecked(), consts);
 
 
 //	exports->Set(String::NewSymbol("read"), FunctionTemplate::New(Read)->GetFunction());

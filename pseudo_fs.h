@@ -6,7 +6,9 @@
  * (c) 2014, WigWag Inc
  */
 #ifndef PSEUDO_FS_H
-#define _6LBR_NODE_H
+#define PSEUDO_FS_H
+
+#include "nan.h"
 
 #include <v8.h>
 #include <node.h>
@@ -39,6 +41,9 @@ using namespace v8;
 #define TIMEOUT_FOR_RETRY 1000  // in ms
 
 
+#if (UV_VERSION_MAJOR < 1)
+#define USE_UV_REF 1
+#endif
 
 /**
  * LICENSE_IMPORT_BEGIN 9/7/14
@@ -68,9 +73,9 @@ Copyright (c) 2010, Ben Noordhuis <info@bnoordhuis.nl>
 
 #if NODE_MAJOR_VERSION > 0 || NODE_MINOR_VERSION > 10
 # define UNI_BOOLEAN_NEW(value)                                               \
-    v8::Boolean::New(args.GetIsolate(), value)
+    v8::Boolean::New(info.GetIsolate(), value)
 # define UNI_BUFFER_NEW(size)                                                 \
-    node::Buffer::New(args.GetIsolate(), size)
+    node::Buffer::New(info.GetIsolate(), size)
 # define UNI_CONST_ARGUMENTS(name)                                            \
     const v8::FunctionCallbackInfo<v8::Value>& name
 # define UNI_ESCAPE(value)                                                    \
@@ -136,7 +141,7 @@ Copyright (c) 2010, Ben Noordhuis <info@bnoordhuis.nl>
 
 const int MAX_IF_NAME_LEN = 16;
 
-class PseudoFs : public node::ObjectWrap {
+class PseudoFs : public Nan::ObjectWrap {
 protected:
 
 //	static void do_create(uv_work_t *req);
@@ -196,10 +201,10 @@ protected:
 		int _fd;
 		int _fs_flags;
 		int _errno;     // the errno that happened on read if an error occurred.
-		v8::Persistent<Function> completeCB;
-		v8::Persistent<Function> onSendSuccessCB;
-		v8::Persistent<Function> onSendFailureCB;
-		v8::Persistent<Object> buffer; // Buffer object passed in
+		Nan::Callback *completeCB;
+		Nan::Callback *onSendSuccessCB;
+		Nan::Callback *onSendFailureCB;
+		Nan::Persistent<Object> buffer; // Buffer object passed in
 		char *_backing;    // backing of the passed in Buffer
 		bool freeBacking;  // free the backing on delete?
 		int len; // amount read or written
@@ -209,7 +214,7 @@ protected:
 		int retries;
 		int timeout;
 		// need Buffer
-		workReq(PseudoFs *i, unsigned int _t) : ref(true), t(_t), _fd(0), _fs_flags(0), _errno(0), completeCB(), onSendSuccessCB(), onSendFailureCB(), buffer(),
+		workReq(PseudoFs *i, unsigned int _t) : ref(true), t(_t), _fd(0), _fs_flags(0), _errno(0), completeCB(NULL), onSendSuccessCB(NULL), onSendFailureCB(NULL), buffer(),
 				_backing(NULL), freeBacking(false), len(0), self(i), _reqSize(0),
 				_extras(NULL), retries(DEFAULT_RETRIES), timeout(TIMEOUT_FOR_RETRY) {
 			work.data = this;
@@ -234,15 +239,26 @@ protected:
 //	static void post_write(uv_work_t *req, int status);
 	static void do_work(uv_work_t *req);
 	static void post_work(uv_work_t *req, int status);
+#if (UV_VERSION_MAJOR > 0)
+	static void timercb_pseudofs(uv_timer_t *h);
+#else
 	static void timercb_pseudofs(uv_timer_t *h, int status);
+#endif
 	static void uv_close_handle_cb(uv_handle_t* handle);
 public:
-	static Handle<Value> Init(const Arguments& args);
-	static void ExtendFrom(const Arguments& args);
-    static void Shutdown();
+//	static Handle<Value> Init(const Arguments& args);
+    static NAN_METHOD(Init);
 
-    static Persistent<Function> constructor_template;
-    static Handle<Value> New(const Arguments& args);
+//	static void ExtendFrom(const Arguments& args);
+//    static void Shutdown();
+    static NAN_METHOD(ExtendFrom);
+    static NAN_METHOD(Shutdown);
+
+
+
+    static Nan::Persistent<Function> constructor_template;
+//    static Handle<Value> New(const Arguments& args);
+    static NAN_METHOD(New);
 
 //    static Handle<Value> New(const Arguments& args);
 //    static Handle<Value> NewInstance(const Arguments& args);
@@ -260,12 +276,20 @@ public:
 //    static Handle<Value> GetLastErrorStr(Local<String> property, const AccessorInfo &info);
 //    static void SetLastErrorStr(Local<String> property, Local<Value> val, const AccessorInfo &info);
 
-    static Handle<Value> GetReadChunkSize(Local<String> property, const AccessorInfo &info);
-    static void SetReadChunkSize(Local<String> property, Local<Value> val, const AccessorInfo &info);
+//    static Handle<Value> GetReadChunkSize(Local<String> property, const AccessorInfo &info);
+//    static void SetReadChunkSize(Local<String> property, Local<Value> val, const AccessorInfo &info);
+    void GetReadChunkSize(v8::Local<v8::String> property,
+                            const Nan::PropertyCallbackInfo<v8::Value>& info);
 
+    void SetReadChunkSize(v8::Local<v8::String> property,
+                            v8::Local<v8::Value> value,
+                            const Nan::PropertyCallbackInfo<v8::Value>& info);
 
-    static Handle<Value> ReadPseudofile(const Arguments& args);
-    static Handle<Value> WritePseudofile(const Arguments& args);
+//    static Handle<Value> ReadPseudofile(const Arguments& args);
+//    static Handle<Value> WritePseudofile(const Arguments& args);
+    static NAN_METHOD(ReadPseudofile);
+    static NAN_METHOD(WritePseudofile);
+
 
 //    static Handle<Value> Close(const Arguments& args);
 
@@ -275,8 +299,8 @@ public:
 //    static Handle<Value> Close(const Arguments& args);
 
 
-    static Persistent<Function> constructor;
-    static Persistent<ObjectTemplate> prototype;
+    static Nan::Persistent<Function> constructor;
+    static Nan::Persistent<ObjectTemplate> prototype;
 
     PseudoFs(char *path = NULL) :
     	_err_str(NULL),
@@ -293,17 +317,6 @@ public:
     	if(_err_str) free(_err_str);
     }
 
-//	void setIfName(char *p, int len) {
-//		if(p) {
-//			memset(_if_name,0,len+1);
-//			if(len > MAX_IF_NAME_LEN) {
-//				ERROR_OUT( "Warning: truncating ifname - string too big\n");
-//				len = MAX_IF_NAME_LEN;
-//			}
-//			memcpy(_if_name,p,len);
-//		}
-//	}
-
 	void setErrStr(char *zSprefix, char *zStr) {
 		if(_err_str) free(_err_str);
 		_err_str = NULL;
@@ -318,14 +331,7 @@ public:
 		}
 	}
 
-
-
-//    static uint32_t genNewWorkId();
-//    static uint32_t nextWorkId;
-//    static uv_mutex_t workIdMutex;
-//    static TWlib::TW_KHash_32<uint32_t, workJob*, TW_Mutex, uint32_eqFunc, TWlib::Allocator<Alloc_Std> > workTable;
-
 };
 
 
-#endif /* ProcFs_H_ */
+#endif /* PSUEDO_FS_H */
