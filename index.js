@@ -1,13 +1,14 @@
 
 var pseudoFS = null;
+var util = require('util');
 try {
-	pseudoFS = require('./build/Debug/pseudofs.node');
+	pseudoFS = require(__dirname + '/build/Debug/pseudofs.node');
 	console.error(" ********** using pseudoFS debug module.  ************* ");
 } catch(e) {
 	try {
-		pseudoFS = require('./build/Release/pseudofs.node');
+		pseudoFS = require(__dirname + '/build/Release/pseudofs.node');
 	} catch(e) {
-		console.error(" ********** is pseudofs built???? ");
+		console.error(" ********** is pseudofs built????  Error: " + util.inspect(e));
 	}
 }
 // callback = function(error,Buffer,readlen) {}
